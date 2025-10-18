@@ -5,6 +5,15 @@ Its goal is to explore how programmable data plane technologies (like eBPF) can 
 
 Developed as part of the **Programmable Networks** course at **IST–METI**.
 
+In this repository theres to programs:
+    - A simple and static program that implements one packet parsing rule using eBPF/XDP;
+    - A more complex layer 4 firewall dynamic solution.
+
+This README has instructions on how to run and compile both this programs and also information on their implementation and setup.
+
+### Disclaimer
+Both this programs use eBPF and XDP which are UnixOS dependent, meaning this program will not work on other OSes. We developed this code in a machine running Ubuntu 25.04, in the overview of the first program tutorial we give some commands to check your developement environment. We **recomend** doing both tutorials in other since both programs were developed squencally and so the second one builds on the first.
+
 # Simple static proof of concept program
 
 ## Overview

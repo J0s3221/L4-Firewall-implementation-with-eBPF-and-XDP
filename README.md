@@ -9,9 +9,9 @@ Developed as part of the **Programmable Networks** course at **IST–METI**.
 
 ## Overview
 
-The first program is simpler and static, it implements one single rule: drop UDP port 1005 traffic.
+The first program is simpler and static, it implements one single rule: **drop UDP port 1005 traffic**.
 
-To test the program we create two virtual ethernet interfaces in two seperate names spaces (veth0 and veth1) and load the program into veth0. Then simulate traffic between them. The program intiates two counter using bpf map arrays, the counter 0 counts the packets that pass and the counter 1 the ones that were dropped. If the program is working correctly it increments the counter accordingly.
+To test the program we create two virtual ethernet interfaces in two seperate namespaces (`veth0` and `veth1`) and load the program into `veth0`. Then simulate traffic between them. The program intiates two counter using bpf map arrays, the counter 0 counts the packets that pass and the counter 1 the ones that were dropped. If the program is working correctly it increments the counter accordingly.
 
 ## Manual Setup & Testing
 
@@ -45,7 +45,8 @@ sudo ip -n ns2 link set veth1 up
 ```
 
 ### Load the program 
-To load the program into the kernel (on veth0):
+
+To load the program into the kernel (on `veth0`):
 ```bash
 sudo ip netns exec ns1 ip link set dev veth0 xdpgeneric obj build/xdp_l4_poc.o sec xdp
 sudo ip netns exec ns1 bpftool net
@@ -53,11 +54,112 @@ sudo ip netns exec ns1 bpftool net
 
 After this the program is ready to be tested.
 
-### Check the setup
+### Check the setup (sanity check)
+
+Before running the tests, make sure all components were correctly created, compiled, and loaded.
+Run the following checks to confirm that your setup is complete and consistent:
+
+**1. Verify namespaces**
+
+Ensure both `ns1` and `ns2` were created:
+```bash
+ip netns list
+```
+
+Expected output:
+```bash
+ns2
+ns1
+```
+
+**2. Verify interfaces inside namespaces**
+
+Check that `veth0` and `veth1` are correctly assigned and up:
+```bash
+sudo ip netns exec ns1 ip link show veth0
+sudo ip netns exec ns2 ip link show veth1
+```
+
+Expected output:
+```bash
+veth0@ifX: <BROADCAST,MULTICAST,UP,LOWER_UP> ...
+veth1@ifY: <BROADCAST,MULTICAST,UP,LOWER_UP> ...
+```
+
+You should also see the assigned IPs:
+```bash
+sudo ip netns exec ns1 ip addr show veth0
+sudo ip netns exec ns2 ip addr show veth1
+```
+
+Expected addresses:
+```bash
+10.0.0.1/24  (on veth0)
+10.0.0.2/24  (on veth1)
+```
+
+**4. Verify that the XDP program is attached**
+
+Check that the XDP program is loaded on `veth0` inside namespace `ns1`:
+```bash
+sudo ip netns exec ns1 bpftool net
+```
+
+You should see output similar to:
+```bash
+4: veth0@if5: <BROADCAST,MULTICAST,UP,LOWER_UP> ...
+    prog/xdp id 42 tag 8a2c9b name xdp_l4_poc
+```
+
+If you see no `prog/xdp` entry then it wasn't properly loaded, try reattaching it using the makefile command (more info in the makefile section):
+```bash
+make load
+```
+
+**5. Verify BPF maps are created**
+
+List the BPF maps to ensure the counters exist:
+```bash
+sudo ip netns exec ns1 bpftool map show
+```
+
+Expected output should include something like:
+```bash
+id 3 name counters type array key 4B value 8B max_entries 2
+```
+
+If all checks pass, your setup is correct and you’re ready to move to the **Test the program section**.
 
 ### Test the program
 
+To test the program send test traffic using netcat:
+```bash
+sudo ip netns exec ns2 bash -c 'echo "drop" | nc -u -w1 10.0.0.1 1005'  # should be dropped
+sudo ip netns exec ns2 bash -c 'echo "pass" | nc -u -w1 10.0.0.1 9999'  # should pass
+```
+Get the map id by running the following command, `the map_id` you want is from an array type with to entries:
+```bash
+sudo ip netns exec ns1 bpftool map show
+```
+
+
+Now check counters, if it worked the counters should have the number of packets passed and dropped:
+```bash
+sudo ip netns exec ns1 bpftool map show
+sudo ip netns exec ns1 bpftool map dump id <map_id>
+```
+
+The expected output should be something like:
+```bash
+    key: 00 00 00 00 value: 9f 98 00 00 00 00 00 00 # packets passed
+    key: 01 00 00 00 value: 9f 98 00 00 00 00 00 00 # packets dropped
+    Found 2 elements
+```
+
 ## Makefile Setup & Testing
+
+Since the manual setup is lengthy, we automated everything with a **Makefile**.
+You can find it in the root directory of this repository.
 
 | Command        | Description                                                  |
 | -------------- | ------------------------------------------------------------ |
@@ -77,8 +179,8 @@ make load
 make test
 ```
 
-## How to compile and run the second program
+# Dynamic layer 4 firewall implementation
 
 The second program is yet to be done.
 
-Devolopers: José Oliveira & Tiago Videira
+**Devolopers**: José Oliveira (J0s3221) & Tiago Videira (tiagovideira8)

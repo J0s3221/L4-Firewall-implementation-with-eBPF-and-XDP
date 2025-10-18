@@ -5,14 +5,14 @@ Its goal is to explore how programmable data plane technologies (like eBPF) can 
 
 Developed as part of the **Programmable Networks** course at **IST–METI**.
 
-In this repository theres to programs:
-    - A simple and static program that implements one packet parsing rule using eBPF/XDP;
-    - A more complex layer 4 firewall dynamic solution.
+In this repository there are two programs:
+- A simple and static program that implements one packet parsing rule using eBPF/XDP;
+- A more complex layer 4 firewall dynamic solution.
 
 This README has instructions on how to run and compile both this programs and also information on their implementation and setup.
 
 ### Disclaimer
-Both this programs use eBPF and XDP which are UnixOS dependent, meaning this program will not work on other OSes. We developed this code in a machine running Ubuntu 25.04, in the overview of the first program tutorial we give some commands to check your developement environment. We **recomend** doing both tutorials in other since both programs were developed squencally and so the second one builds on the first.
+Both this programs use eBPF and XDP which are UnixOS dependent, meaning this program **will not work on other OSes**. We developed this code in a machine running Ubuntu 25.04, in the overview of the first program tutorial we give some commands to check your developement environment. We **recomend** doing both tutorials in other since both programs were developed squencally and so the second one builds on the first.
 
 # Simple static proof of concept program
 
@@ -21,6 +21,77 @@ Both this programs use eBPF and XDP which are UnixOS dependent, meaning this pro
 The first program is simpler and static, it implements one single rule: **drop UDP port 1005 traffic**.
 
 To test the program we create two virtual ethernet interfaces in two seperate namespaces (`veth0` and `veth1`) and load the program into `veth0`. Then simulate traffic between them. The program intiates two counter using bpf map arrays, the counter 0 counts the packets that pass and the counter 1 the ones that were dropped. If the program is working correctly it increments the counter accordingly.
+
+### Check development environment
+
+This project relies on **Linux-native networking and eBPF tools**, which are only fully supported on **modern Unix-like systems**.
+It was developed and tested on Ubuntu **25.04 (Lunar Lobster)**, but it should also work on most recent Ubuntu or Debian-based distributions (22.04+).
+
+Before building and running the program, make sure your environment meets the following requirements.
+
+**1. Check kernel version**
+
+The Linux kernel must support XDP and eBPF (version 5.4 or newer is recommended):
+```bash
+uname -r
+```
+
+Expected output:
+```bash
+5.4.0 or higher
+```
+
+If your kernel is older, update it:
+```bash
+sudo apt update && sudo apt full-upgrade -y
+```
+
+**2. Install required packages**
+
+Install the necessary development tools and utilities:
+```bash
+sudo apt update
+sudo apt install -y clang llvm libbpf-dev libelf-dev build-essential \
+                    iproute2 iputils-ping net-tools bpftool ethtool make
+```
+
+These packages provide:
+- **clang/llvm** – to compile eBPF programs
+- **libbpf-dev** and libelf-dev – to work with ELF and BPF objects
+- **iproute2** – to manage network namespaces and interfaces
+- **bpftool** – to inspect and debug eBPF objects
+- **ethtool** – to query and manage interface driver information
+- **make** – to run the automated Makefile build/test commands
+
+**3. Verify bpftool and clang availability**
+
+Make sure both are available and working:
+```bash
+bpftool version
+clang --version
+```
+
+Example outputs:
+```bash
+bpftool v7.2.0
+clang version 17.0.0
+```
+
+**4. Optional: enable BPF sysctl settings**
+
+Ensure the system allows loading BPF programs:
+```bash
+sudo sysctl net.core.bpf_jit_enable
+```
+
+If the output is `0`, enable it permanently:
+```bash
+echo "net.core.bpf_jit_enable=1" | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p
+```
+
+Once these checks pass, your environment is ready for compilation and testing ✅.
+You can now proceed to Compiling the program.
 
 ## Manual Setup & Testing
 
@@ -150,7 +221,13 @@ Get the map id by running the following command, `the map_id` you want is from a
 ```bash
 sudo ip netns exec ns1 bpftool map show
 ```
+The results should follow:
 
+| Traffic Type  | Destination Port | Expected Behavior |
+| ------------- | ---------------- | ----------------- |
+| UDP           | 1005             | ❌ Dropped         |
+| UDP           | 9999             | ✅ Passed          |
+| Other traffic | Any              | ✅ Passed          |
 
 Now check counters, if it worked the counters should have the number of packets passed and dropped:
 ```bash
@@ -164,6 +241,8 @@ The expected output should be something like:
     key: 01 00 00 00 value: 9f 98 00 00 00 00 00 00 # packets dropped
     Found 2 elements
 ```
+
+If your counters were correctly implemented the program worked! ✅
 
 ## Makefile Setup & Testing
 
@@ -187,6 +266,29 @@ make all
 make load
 make test
 ```
+
+The results should follow:
+
+| Traffic Type  | Destination Port | Expected Behavior |
+| ------------- | ---------------- | ----------------- |
+| UDP           | 1005             | ❌ Dropped         |
+| UDP           | 9999             | ✅ Passed          |
+| Other traffic | Any              | ✅ Passed          |
+
+Now check counters, if it worked the counters should have the number of packets passed and dropped:
+```bash
+sudo ip netns exec ns1 bpftool map show
+sudo ip netns exec ns1 bpftool map dump id <map_id>
+```
+
+The expected output should be something like:
+```bash
+    key: 00 00 00 00 value: 9f 98 00 00 00 00 00 00 # packets passed
+    key: 01 00 00 00 value: 9f 98 00 00 00 00 00 00 # packets dropped
+    Found 2 elements
+```
+
+If your counters were correctly implemented the program worked! ✅
 
 # Dynamic layer 4 firewall implementation
 

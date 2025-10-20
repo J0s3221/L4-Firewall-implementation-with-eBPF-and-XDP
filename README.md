@@ -305,4 +305,6 @@ If your counters were correctly implemented the program worked! ✅😊
 ## Overview 
 The second program is more complex than the first one, and it implements more flexible dynamic firewall solution that allows for custom traffic rules.
 
+## Manual Setup & Testing
+
 **Devolopers**: José Oliveira (J0s3221) & Tiago Videira (tiagovideira8)

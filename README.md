@@ -302,6 +302,7 @@ If your counters were correctly implemented the program worked! ✅😊
 
 # Dynamic layer 4 firewall implementation
 
-The second program is yet to be done.
+## Overview 
+The second program is more complex than the first one, and it implements more flexible dynamic firewall solution that allows for custom traffic rules.
 
 **Devolopers**: José Oliveira (J0s3221) & Tiago Videira (tiagovideira8)

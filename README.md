@@ -212,6 +212,14 @@ If all checks pass, your setup is correct and you’re ready to move to the **Te
 
 ### Test the program
 
+The results should follow:
+
+| Traffic Type  | Destination Port | Expected Behavior |
+| ------------- | ---------------- | ----------------- |
+| UDP           | 1005             | ❌ Dropped         |
+| UDP           | 9999             | ✅ Passed          |
+| Other traffic | Any              | ✅ Passed          |
+
 To test the program send test traffic using netcat:
 ```bash
 sudo ip netns exec ns2 bash -c 'echo "drop" | nc -u -w1 10.0.0.1 1005'  # should be dropped
@@ -221,24 +229,22 @@ Get the map id by running the following command, `the map_id` you want is from a
 ```bash
 sudo ip netns exec ns1 bpftool map show
 ```
-The results should follow:
-
-| Traffic Type  | Destination Port | Expected Behavior |
-| ------------- | ---------------- | ----------------- |
-| UDP           | 1005             | ❌ Dropped         |
-| UDP           | 9999             | ✅ Passed          |
-| Other traffic | Any              | ✅ Passed          |
 
 Now check counters, if it worked the counters should have the number of packets passed and dropped:
+
 ```bash
-sudo ip netns exec ns1 bpftool map show
-sudo ip netns exec ns1 bpftool map dump id <map_id>
+sudo ip netns exec ns1 bpftool map show # name counters
 ```
+
+```bash
+sudo ip netns exec ns1 bpftool map dump id <map_id> # id -> name counters
+```
+
 
 The expected output should be something like:
 ```bash
-    key: 00 00 00 00 value: 9f 98 00 00 00 00 00 00 # packets passed
-    key: 01 00 00 00 value: 9f 98 00 00 00 00 00 00 # packets dropped
+    key: 00 00 00 00 value: 0a 00 00 00 00 00 00 00 # packets passed
+    key: 01 00 00 00 value: 0a 00 00 00 00 00 00 00 # packets dropped
     Found 2 elements
 ```
 
@@ -276,15 +282,19 @@ The results should follow:
 | Other traffic | Any              | ✅ Passed          |
 
 Now check counters, if it worked the counters should have the number of packets passed and dropped:
+
 ```bash
-sudo ip netns exec ns1 bpftool map show
-sudo ip netns exec ns1 bpftool map dump id <map_id>
+sudo ip netns exec ns1 bpftool map show # name counters
+```
+
+```bash
+sudo ip netns exec ns1 bpftool map dump id <map_id> # id -> name counters
 ```
 
 The expected output should be something like:
 ```bash
-    key: 00 00 00 00 value: 9f 98 00 00 00 00 00 00 # packets passed
-    key: 01 00 00 00 value: 9f 98 00 00 00 00 00 00 # packets dropped
+    key: 00 00 00 00 value: 0a 00 00 00 00 00 00 00 # packets passed
+    key: 01 00 00 00 value: 0a 00 00 00 00 00 00 00 # packets dropped
     Found 2 elements
 ```
 

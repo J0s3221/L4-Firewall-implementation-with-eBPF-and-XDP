@@ -1,89 +1,64 @@
-# ===================================================
-#  Makefile for L4 Firewall with eBPF + XDP - Phase 1
-# ===================================================
+# Makefile - Static Test Environment for L4 Firewall (eBPF + XDP)
 
-BPF_SRC = bpf/xdp_l4_poc.c
 BPF_OBJ = build/xdp_l4_poc.o
-IFACE_NS1 = veth0
+BPF_SRC = bpf/xdp_l4_poc.c
 NETNS1 = ns1
 NETNS2 = ns2
-PORT_BLOCK = 1005
-PORT_PASS  = 9999
+IFACE1 = veth0
+IFACE2 = veth1
 
-CC = clang
-CFLAGS = -O2 -g -target bpf -I/usr/include -I/usr/include/x86_64-linux-gnu
+.PHONY: all clean setup load unload test show
 
-# ========================
-# Default target
-# ========================
 all: $(BPF_OBJ)
+	@echo "✅ Build done: $(BPF_OBJ)"
 
 $(BPF_OBJ): $(BPF_SRC)
-	@mkdir -p build
 	@echo "🔧 Compiling BPF program..."
-	$(CC) $(CFLAGS) -c $< -o $@
-	@echo "✅ Build done: $@"
+	mkdir -p build
+	clang -O2 -g -target bpf -I/usr/include -I/usr/include/x86_64-linux-gnu -c $(BPF_SRC) -o $(BPF_OBJ)
 
-# ========================
-# Setup namespaces & veth
-# ========================
 setup:
 	@echo "🌐 Setting up namespaces and veth pair..."
-	-sudo ip link del $(IFACE_NS1) 2>/dev/null || true
-	-sudo ip netns del $(NETNS1) 2>/dev/null || true
-	-sudo ip netns del $(NETNS2) 2>/dev/null || true
+	sudo ip link del $(IFACE1) 2>/dev/null || true
+	sudo ip netns del $(NETNS1) 2>/dev/null || true
+	sudo ip netns del $(NETNS2) 2>/dev/null || true
 	sudo ip netns add $(NETNS1)
 	sudo ip netns add $(NETNS2)
-	sudo ip link add $(IFACE_NS1) type veth peer name veth1
-	sudo ip link set $(IFACE_NS1) netns $(NETNS1)
-	sudo ip link set veth1 netns $(NETNS2)
-	sudo ip netns exec $(NETNS1) ip addr add 10.0.0.1/24 dev $(IFACE_NS1)
-	sudo ip netns exec $(NETNS1) ip link set $(IFACE_NS1) up
-	sudo ip netns exec $(NETNS2) ip addr add 10.0.0.2/24 dev veth1
-	sudo ip netns exec $(NETNS2) ip link set veth1 up
-	@echo "✅ Network namespaces ready (ns1 <-> ns2)"
+	sudo ip link add $(IFACE1) type veth peer name $(IFACE2)
+	sudo ip link set $(IFACE1) netns $(NETNS1)
+	sudo ip link set $(IFACE2) netns $(NETNS2)
+	sudo ip netns exec $(NETNS1) ip addr add 10.0.0.1/24 dev $(IFACE1)
+	sudo ip netns exec $(NETNS1) ip link set $(IFACE1) up
+	sudo ip netns exec $(NETNS2) ip addr add 10.0.0.2/24 dev $(IFACE2)
+	sudo ip netns exec $(NETNS2) ip link set $(IFACE2) up
+	@echo "✅ Network namespaces ready ($(NETNS1) <-> $(NETNS2))"
 
-# ========================
-# Attach & Detach program
-# ========================
-load: $(BPF_OBJ)
-	@echo "🚀 Attaching XDP program to $(IFACE_NS1) in $(NETNS1)..."
-	sudo ip netns exec $(NETNS1) ip link set dev $(IFACE_NS1) xdpgeneric obj $(BPF_OBJ) sec xdp
-	@sudo ip netns exec $(NETNS1) bpftool net
+load:
+	@echo "🚀 Attaching XDP program to $(IFACE1) in $(NETNS1)..."
+	sudo ip netns exec $(NETNS1) ip link set dev $(IFACE1) xdpgeneric obj $(BPF_OBJ) sec xdp
 	@echo "✅ XDP program loaded!"
 
 unload:
-	@echo "🧹 Detaching XDP program..."
-	-sudo ip netns exec $(NETNS1) ip link set dev $(IFACE_NS1) xdpgeneric off 2>/dev/null || true
-	@echo "✅ Program detached!"
+	@echo "🧹 Removing XDP program..."
+	sudo ip netns exec $(NETNS1) ip link set dev $(IFACE1) xdpgeneric off || true
+	@echo "✅ XDP program unloaded."
 
-# ========================
-# Test & Verify
-# ========================
 test:
-	@echo "🧪 Sending UDP packets (port $(PORT_BLOCK) blocked, $(PORT_PASS) passed)..."
-	sudo ip netns exec $(NETNS2) bash -c 'for i in {1..5}; do echo -n "drop" | nc -u -w1 10.0.0.1 $(PORT_BLOCK); done'
-	sudo ip netns exec $(NETNS2) bash -c 'for i in {1..5}; do echo -n "pass" | nc -u -w1 10.0.0.1 $(PORT_PASS); done'
+	@echo "🧪 Sending UDP packets (port 1005 blocked, 9999 passed)..."
+	@sudo ip netns exec $(NETNS2) bash -c 'for i in {1..5}; do echo -n "drop" | nc -u -w1 10.0.0.1 1005 >/dev/null 2>&1; done'
+	@sudo ip netns exec $(NETNS2) bash -c 'for i in {1..5}; do echo -n "pass" | nc -u -w1 10.0.0.1 9999 >/dev/null 2>&1; done'
 	@echo "📊 Current counters:"
-	@sudo ip netns exec $(NETNS1) bash -c 'ID=$$(bpftool net | awk "/generic id/ {print \$$5}"); \
-		bpftool prog show id $$ID | grep map_ids; \
-		M=$$(bpftool prog show id $$ID | sed -n "s/.*map_ids: \[\(.*\)\].*/\1/p"); \
-		echo ""; bpftool map dump id $$M'
+	@sudo bpftool map show name counters 2>/dev/null || echo "⚠️  No counters map found"
+	@sudo bpftool map dump name counters 2>/dev/null || echo "⚠️  Unable to dump counters map contents"
 
-# ========================
-# Clean everything
-# ========================
+show:
+	@echo "🔍 Listing loaded XDP programs and maps..."
+	sudo bpftool prog show
+	sudo bpftool map show
+
 clean:
-	@echo "🧽 Cleaning build files and tearing down namespaces..."
-	-sudo ip netns exec $(NETNS1) ip link set dev $(IFACE_NS1) xdpgeneric off 2>/dev/null || true
-	-sudo ip link del $(IFACE_NS1) 2>/dev/null || true
-	-sudo ip netns del $(NETNS1) 2>/dev/null || true
-	-sudo ip netns del $(NETNS2) 2>/dev/null || true
+	@echo "🧹 Cleaning build files and namespaces..."
+	sudo ip netns del $(NETNS1) 2>/dev/null || true
+	sudo ip netns del $(NETNS2) 2>/dev/null || true
 	rm -rf build
-	@echo "✅ Clean complete!"
-
-# ========================
-# Shortcuts
-# ========================
-reload: unload load
-rebuild: clean setup all load
+	@echo "✅ Clean done."

@@ -248,7 +248,7 @@ The expected output should be something like:
     Found 2 elements
 ```
 
-If your counters were correctly implemented the program worked! ✅
+If your counters were correctly implemented the program worked! ✅😊
 
 ## Makefile Setup & Testing
 
@@ -298,7 +298,7 @@ The expected output should be something like:
     Found 2 elements
 ```
 
-If your counters were correctly implemented the program worked! ✅
+If your counters were correctly implemented the program worked! ✅😊
 
 # Dynamic layer 4 firewall implementation
 

@@ -302,9 +302,101 @@ If your counters were correctly implemented the program worked! ✅😊
 
 # Dynamic layer 4 firewall implementation
 
-## Overview 
-The second program is more complex than the first one, and it implements more flexible dynamic firewall solution that allows for custom traffic rules.
+## Overview
 
-## Manual Setup & Testing
+The second program is a **dynamic Layer 4 firewall** that extends the static proof of concept by allowing **runtime configuration of filtering rules**.
+Instead of hardcoding a single blocked port in the source code, this version uses an eBPF hash map named `blocked_ports`, enabling the user to add or remove blocked UDP ports on the fly using `bpftool`.
+
+This provides the flexibility of a real firewall, where filtering policies can change at runtime without recompiling or reloading the XDP program.
+
+### How it works
+
+The program defines a new BPF map that stores the destination ports to block:
+
+```c
+struct {
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(max_entries, 128);
+    __type(key, __u16);   // Destination port
+    __type(value, __u8);  // 1 = blocked
+} blocked_ports SEC(".maps");
+```
+
+When a UDP packet arrives, the program looks up its destination port in this map:
+
+```c
+__u16 dport = bpf_ntohs(udp->dest);
+__u8 *blocked = bpf_map_lookup_elem(&blocked_ports, &dport);
+if (blocked)
+    return XDP_DROP;
+```
+
+If the port exists in the `blocked_ports` map, the packet is dropped; otherwise, it is passed and counted normally.
+This logic makes it possible to modify firewall rules at runtime directly from user space.
+
+## Dynamic configuration
+
+Using `bpftool`, you can dynamically manage which ports are blocked without recompiling or restarting the program:
+
+```bash
+# Add UDP port 1005 to the blocked list
+sudo bpftool map update name blocked_ports key 1005 value 1
+
+# Remove UDP port 1005 from the blocked list
+sudo bpftool map delete name blocked_ports key 1005
+
+# Show all currently blocked ports
+sudo bpftool map dump name blocked_ports
+```
+
+After adding a port to the map, any UDP packets sent to that port will be dropped immediately.
+When removed, traffic to that port will be allowed again — all without touching the code or restarting the XDP program.
+
+## Makefile Setup & Testing
+
+The dynamic firewall uses the same virtual environment as the static one, with two namespaces (`ns1`, `ns2`) connected by a veth pair (`veth0`–`veth1`).
+A dedicated **Makefile** in the `dynamic/` folder automates the entire build and testing process.
+
+To compile, load, and test the program:
+
+```bash
+make clean
+make setup
+make all
+make load
+make test
+```
+
+Expected output from `make test`:
+
+```
+🧪 Sending UDP packets (dynamic mode test: blocked & passed)...
+📊 Current counters:
+key: 00 00 00 00  value: 05 00 00 00 00 00 00 00   # Dropped packets
+key: 01 00 00 00  value: 05 00 00 00 00 00 00 00   # Passed packets
+✅ Dynamic test completed successfully.
+```
+
+## Results
+
+| Traffic Type  | Destination Port | Expected Behavior |
+| ------------- | ---------------- | ----------------- |
+| UDP           | 1005 (blocked)   | ❌ Dropped         |
+| UDP           | 9999 (allowed)   | ✅ Passed          |
+| Other traffic | Any              | ✅ Passed          |
+
+You can confirm the counters with:
+
+```bash
+sudo bpftool map dump name counters
+```
+
+## Summary
+
+The dynamic implementation transforms the initial proof of concept into a **fully configurable eBPF/XDP firewall**,
+capable of adapting its filtering rules at runtime while maintaining kernel-level performance.
+
+It demonstrates the power and flexibility of eBPF maps for **real-time user–kernel communication**, showing how modern programmable networking can achieve both speed and adaptability in packet processing.
+
 
 **Devolopers**: José Oliveira (J0s3221) & Tiago Videira (tiagovideira8)

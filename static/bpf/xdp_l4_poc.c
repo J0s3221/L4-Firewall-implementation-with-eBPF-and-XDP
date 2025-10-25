@@ -39,7 +39,7 @@ int xdp_l4_poc(struct xdp_md *ctx)
             return XDP_PASS;
 
         if (udp->dest == __constant_htons(1005)) {
-            int key = 0;   /* drop counter */
+            int key = 0;
             __u64 *val = bpf_map_lookup_elem(&counters, &key);
             if (val) __sync_fetch_and_add(val, 1);
             return XDP_DROP;
